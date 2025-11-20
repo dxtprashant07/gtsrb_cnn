@@ -54,29 +54,23 @@ def load_model():
         return None
 
 def preprocess_image(image, img_size=(48, 48)):
-    """
-    Preprocess input image:
-    - Convert to RGB
-    - Resize using PIL (no OpenCV)
-    - Normalize to [0,1]
-    - Expand dimensions to batch format
-    """
+    """Resize, normalize and convert image for model"""
     image = image.convert("RGB")
     image = image.resize(img_size)
     img_array = np.array(image).astype("float32") / 255.0
     return np.expand_dims(img_array, axis=0)
 
 def predict_sign(model, image):
-    """Make prediction using the trained CNN"""
+    """Predict traffic sign class"""
     processed = preprocess_image(image)
     predictions = model.predict(processed, verbose=0)
 
     predicted_class = np.argmax(predictions[0])
     confidence = predictions[0][predicted_class]
 
-    top5_indices = np.argsort(predictions[0])[-5:][::-1]
-    top5_classes = [CLASS_NAMES[i] for i in top5_indices]
-    top5_probs = [predictions[0][i] for i in top5_indices]
+    top5_idx = np.argsort(predictions[0])[-5:][::-1]
+    top5_classes = [CLASS_NAMES[i] for i in top5_idx]
+    top5_probs = [predictions[0][i] for i in top5_idx]
 
     return predicted_class, confidence, top5_classes, top5_probs
 
@@ -92,7 +86,6 @@ def main():
         st.info("""
             Deep Learning model trained on GTSRB dataset.
             - 43 traffic sign classes
-            - Real-time prediction
             - Top-5 confidence scores
         """)
         st.header("Model Info")
@@ -100,7 +93,6 @@ def main():
         st.metric("Input Size", "48×48")
         st.metric("Model Type", "CNN")
 
-    # Load model
     model = load_model()
     if model is None:
         return
@@ -108,28 +100,29 @@ def main():
     col1, col2 = st.columns([1, 1])
 
     with col1:
-        st.header("📤 Upload or Capture Image")
+        st.header("📤 Upload Image for Classification")
 
-        uploaded = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg", "webp"])
-        camera_capture = st.camera_input("Or capture using camera")
+        uploaded_file = st.file_uploader(
+            "Upload traffic sign image",
+            type=["png", "jpg", "jpeg", "webp"]
+        )
 
-        image_source = uploaded if uploaded else camera_capture
-
-        if image_source:
-            image = Image.open(image_source)
+        if uploaded_file:
+            image = Image.open(uploaded_file)
             st.image(image, caption="Uploaded Image", use_container_width=True)
 
             if st.button("🔍 Classify Traffic Sign"):
                 with st.spinner("Processing..."):
                     pred_class, conf, top5_classes, top5_probs = predict_sign(model, image)
-
-                    st.session_state['pred_class'] = pred_class
-                    st.session_state['conf'] = conf
-                    st.session_state['top5_classes'] = top5_classes
-                    st.session_state['top5_probs'] = top5_probs
+                    st.session_state.update({
+                        "pred_class": pred_class,
+                        "conf": conf,
+                        "top5_classes": top5_classes,
+                        "top5_probs": top5_probs
+                    })
 
     with col2:
-        st.header("📊 Prediction")
+        st.header("📊 Prediction Results")
 
         if "pred_class" in st.session_state:
             pred_class = st.session_state["pred_class"]
@@ -137,28 +130,28 @@ def main():
             top5_classes = st.session_state["top5_classes"]
             top5_probs = st.session_state["top5_probs"]
 
-            st.subheader("🎯 Predicted Sign")
             st.markdown(f"""
-            <div class="prediction-box">
-                <h2 style="color:#FF4B4B;">{CLASS_NAMES[pred_class]}</h2>
-                <h3>Confidence: {confidence*100:.2f}%</h3>
-            </div>
+                <div class="prediction-box">
+                    <h2 style="color:#FF4B4B;">{CLASS_NAMES[pred_class]}</h2>
+                    <h3>Confidence: {confidence*100:.2f}%</h3>
+                </div>
             """, unsafe_allow_html=True)
 
             st.progress(float(confidence))
 
-            # Top-5
-            st.subheader("📈 Top-5 Predictions")
+            # Top 5 confidence results
             df = pd.DataFrame({
-                "Traffic Sign": top5_classes,
+                "Class": top5_classes,
                 "Probability (%)": [f"{p*100:.2f}" for p in top5_probs]
             })
+
+            st.subheader("📈 Top-5 Predictions")
             st.dataframe(df)
-
-            st.bar_chart(pd.DataFrame(top5_probs, index=top5_classes, columns=["Confidence"]))
-
+            st.bar_chart(
+                pd.DataFrame(top5_probs, index=top5_classes, columns=["Confidence"])
+            )
         else:
-            st.info("📌 Upload an image to see predictions")
+            st.info("📌 Upload an image to get predictions")
 
 if __name__ == "__main__":
     main()
